@@ -12,21 +12,20 @@ mount path then reads nothing.
 
 That alone would be an ordinary "file not found". What makes it dangerous is
 DuckDB: **`dbConnect()` creates a database when the path does not exist.** So the
-failure is not an error. It is an empty warehouse, zero rows from every query,
-and a pipeline that reports success having measured nothing.
+failure is not an error. It is an empty database, zero rows from every query, and
+a pipeline that reports success having measured nothing.
 
-This is not hypothetical. In the research repository this package came from,
-two files with the same name sat on one drive:
+The shape of the failure, which is what makes it worth a package:
 
 | Path | Size | Tables |
 |---|---:|---:|
-| `…/DuckDB/nber_my_duckdb.duckdb` | 84.3 GB | 454 |
-| `…/nber_my_duckdb.duckdb` | **12 KB** | **0** |
+| `…/DuckDB/warehouse.duckdb` | tens of GB | hundreds |
+| `…/warehouse.duckdb` | a few KB | **0** |
 
-The second was created by scripts pointed at a path that no longer existed. 80
-executable lines across 75 files referenced it. Eleven of those only called
-`dbListTables()`, so an empty database answered without complaint and they
-reported *"this warehouse has no tables"* as a finding.
+The second is created by scripts pointed at a path that no longer exists. Code
+that queries a named table will error loudly. Code that only calls
+`dbListTables()` will not — it receives an empty list and reports *"this database
+has no tables"* as though that were a finding.
 
 ## Rules
 
@@ -46,19 +45,19 @@ reported *"this warehouse has no tables"* as a finding.
 
 ```r
 # Where is the drive, whatever it is called today?
-root <- resolve_volume("MyDrive*")
+root <- resolve_volume("ExternalDrive*")
 
 # One file below it
-csv <- resolve_file_on_volume("NPPES/npidata_pfile.csv", "MyDrive*")
+csv <- resolve_file_on_volume("raw/providers.csv", "ExternalDrive*")
 
 # A DuckDB warehouse, with a mandatory size floor
-db <- resolve_duckdb("DuckDB/warehouse.duckdb", "MyDrive*")
+db <- resolve_duckdb("DuckDB/warehouse.duckdb", "ExternalDrive*")
 
 # ...or open it read-only, asserting the tables you need exist AND are non-empty
 con <- open_duckdb_checked(
   relative_path   = "DuckDB/warehouse.duckdb",
-  volume_pattern  = "MyDrive*",
-  required_tables = c("npi_org_all")
+  volume_pattern  = "ExternalDrive*",
+  required_tables = c("providers", "organizations")
 )
 ```
 
@@ -75,7 +74,7 @@ considers valid:
 my_warehouse <- function(required_tables = character()) {
   researchpaths::open_duckdb_checked(
     relative_path   = "DuckDB/warehouse.duckdb",
-    volume_pattern  = "MyDrive*",
+    volume_pattern  = "ExternalDrive*",
     required_tables = required_tables
   )
 }
@@ -83,13 +82,13 @@ my_warehouse <- function(required_tables = character()) {
 
 If your repository **already** has a generic path resolver, use it and layer only
 the DuckDB guarantees on top. Two independently maintained implementations of a
-safety-critical filesystem rule is the failure mode, not the fix — a migration
-that added a second resolver to 324 files before noticing the first one is what
-prompted that sentence.
+safety-critical filesystem rule is the failure mode, not the fix — that sentence
+is here because a migration once added a second resolver to hundreds of files
+before anyone noticed the first one.
 
 ## Tests
 
-The canonical bug reproduction ships with the package: a 100-byte decoy under one
+The canonical bug reproduction ships with the package: a tiny decoy under one
 mount spelling, a valid fixture under another. The resolver must choose the valid
 one and leave **both files byte- and mtime-identical**, because if discovery
 could modify a candidate then merely looking for the database would manufacture

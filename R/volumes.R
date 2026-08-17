@@ -2,23 +2,28 @@
 # Removable volumes mount under whatever name the OS decides. Code should not
 # care, and must never be able to silently create the thing it was looking for.
 # =============================================================================
-# THE INCIDENT THIS PACKAGE EXISTS FOR.
+# THE FAILURE THIS PACKAGE EXISTS FOR.
 #
 # macOS leaves a stale mount point in /Volumes after an unclean unmount and then
 # mounts the real disk with " 1" appended. The same physical drive is
-# /Volumes/MufflySamsung on one boot and /Volumes/MufflySamsung 1 on the next.
-# A research repo had hardcoded the first spelling in eight scripts.
+# /Volumes/Name on one boot and /Volumes/Name 1 on the next, and nothing in a
+# repository controls which.
 #
-# That alone would be a trivial "file not found". What made it dangerous is that
-# DuckDB CREATES a database when the path does not exist. So the failure was not
-# an error: it was a 12 KB empty warehouse, zero rows from every query, and a
-# pipeline that reported success having measured nothing. Both files were left
-# on the drive:
+# That alone would be a trivial "file not found". What makes it dangerous is
+# what DuckDB does with a path that does not exist: dbConnect() CREATES the
+# database. So the failure is not an error, it is an empty database of a few KB,
+# zero rows from every query, and a run that reports success having measured
+# nothing.
 #
-#   /Volumes/MufflySamsung 1/DuckDB/nber_my_duckdb.duckdb   84.3 GB, 454 tables
-#   /Volumes/MufflySamsung 1/nber_my_duckdb.duckdb           12 KB,   0 tables
+# Both files then coexist on the drive: the real warehouse of tens of GB and
+# hundreds of tables, and a stub of a few KB with none. Code that queries a
+# named table errors loudly. Code that only calls dbListTables() does not -- it
+# receives an empty list and reports "this database has no tables" as though
+# that were a finding.
 #
-# An analysis run against the second finds nothing and looks clean.
+# The fix is not to rename the disk. It is for discovery to be a glob over the
+# volume name, for a candidate to have to LOOK like the real thing before it is
+# accepted, and for anything ambiguous to stop loudly.
 #
 # THE RULES THIS PACKAGE ENFORCES.
 #
@@ -39,7 +44,7 @@ RESEARCHPATHS_ROOT_ENV <- "RESEARCHPATHS_ROOT"
 
 #' Mounted volumes matching a pattern
 #'
-#' @param pattern [character] volume-name glob, e.g. "MufflySamsung*".
+#' @param pattern [character] volume-name glob, e.g. "ExternalDrive*".
 #' @param mount_root [character] where volumes appear. "/Volumes" on macOS,
 #'   "/media"/"/mnt" elsewhere; parameterised so this is testable without one.
 #' @param require_unique [logical] stop when more than one matches. FALSE when a
