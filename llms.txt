@@ -1,0 +1,152 @@
+# researchpaths
+
+Resolve data paths on removable volumes without guessing — and without
+silently creating the thing you were looking for.
+
+## The problem this exists for
+
+Removable volumes mount under whatever name the operating system
+decides. macOS in particular leaves a stale mount point in `/Volumes`
+after an unclean unmount and then remounts the same physical drive as
+`Name 1`. Code that hardcodes a mount path then reads nothing.
+
+That alone would be an ordinary “file not found”. What makes it
+dangerous is DuckDB: **`dbConnect()` creates a database when the path
+does not exist.** So the failure is not an error. It is an empty
+database, zero rows from every query, and a pipeline that reports
+success having measured nothing.
+
+The shape of the failure, which is what makes it worth a package:
+
+| Path                        |       Size |   Tables |
+|-----------------------------|-----------:|---------:|
+| `…/DuckDB/warehouse.duckdb` | tens of GB | hundreds |
+| `…/warehouse.duckdb`        |   a few KB |    **0** |
+
+The second is created by scripts pointed at a path that no longer
+exists. Code that queries a named table will error loudly. Code that
+only calls `dbListTables()` will not — it receives an empty list and
+reports *“this database has no tables”* as though that were a finding.
+
+## Rules
+
+1.  Discovery is a **glob** over the volume name, never a literal.
+2.  Discovery **never creates, opens or modifies** a candidate — it
+    touches the filesystem only through
+    [`Sys.glob()`](https://rdrr.io/r/base/Sys.glob.html) and
+    [`file.info()`](https://rdrr.io/r/base/file.info.html).
+3.  A candidate must **look like** the real thing (size floor) before it
+    is accepted.
+4.  Zero candidates is an error. Several plausible candidates is an
+    error. Guessing between two mounted drives silently decides which
+    data an analysis ran on.
+5.  An environment override is honoured but **still validated**. A typo
+    in `RESEARCHPATHS_ROOT` must fail, not create a database somewhere
+    new.
+6.  Connections are **read-only** unless a caller deliberately asks
+    otherwise.
+
+## Usage
+
+``` r
+
+# Where is the drive, whatever it is called today?
+root <- resolve_volume("ExternalDrive*")
+
+# One file below it
+csv <- resolve_file_on_volume("raw/providers.csv", "ExternalDrive*")
+
+# A DuckDB warehouse, with a mandatory size floor
+db <- resolve_duckdb("DuckDB/warehouse.duckdb", "ExternalDrive*")
+
+# ...or open it read-only, asserting the tables you need exist AND are non-empty
+con <- open_duckdb_checked(
+  relative_path   = "DuckDB/warehouse.duckdb",
+  volume_pattern  = "ExternalDrive*",
+  required_tables = c("providers", "organizations")
+)
+```
+
+An empty required table is treated as a **missing** one. That is the
+whole point: a caller that proceeds from an empty table produces a
+confident answer about nothing.
+
+## Per-repo wrappers
+
+Keep the filesystem mechanics here and let each repository declare what
+*it* considers valid:
+
+``` r
+
+my_warehouse <- function(required_tables = character()) {
+  researchpaths::open_duckdb_checked(
+    relative_path   = "DuckDB/warehouse.duckdb",
+    volume_pattern  = "ExternalDrive*",
+    required_tables = required_tables
+  )
+}
+```
+
+If your repository **already** has a generic path resolver, use it and
+layer only the DuckDB guarantees on top. Two independently maintained
+implementations of a safety-critical filesystem rule is the failure
+mode, not the fix — that sentence is here because a migration once added
+a second resolver to hundreds of files before anyone noticed the first
+one.
+
+## Tests
+
+The canonical bug reproduction ships with the package: a tiny decoy
+under one mount spelling, a valid fixture under another. The resolver
+must choose the valid one and leave **both files byte- and
+mtime-identical**, because if discovery could modify a candidate then
+merely looking for the database would manufacture the decoy.
+
+``` r
+
+testthat::test_dir("tests/testthat")
+```
+
+## Install
+
+``` r
+
+remotes::install_github("mufflyt/researchpaths")
+```
+
+## Licence
+
+MIT
+
+# Package index
+
+## Volumes
+
+Discover a mount point by glob rather than by hardcoded name. A
+removable volume remounts as “Name 1” after an unclean unmount, and a
+hardcoded path then silently reads nothing.
+
+- [`resolve_volume()`](https://mufflyt.github.io/researchpaths/reference/resolve_volume.md)
+  : Mounted volumes matching a pattern
+
+## Files on a volume
+
+Locate a file relative to a discovered volume, validating it before any
+caller opens it.
+
+- [`resolve_file_on_volume()`](https://mufflyt.github.io/researchpaths/reference/resolve_file_on_volume.md)
+  : Resolve one file below a volume, whatever the volume is called
+
+## DuckDB
+
+The layer that exists because DuckDB CREATES a database at a path that
+does not exist. A typo in a warehouse path is therefore not an error but
+an empty database, and a pipeline that reports success having measured
+nothing. These two refuse to open a database that fails a size check.
+
+- [`resolve_duckdb()`](https://mufflyt.github.io/researchpaths/reference/resolve_duckdb.md)
+  : Resolve a DuckDB warehouse, with a size floor by default
+- [`open_duckdb_checked()`](https://mufflyt.github.io/researchpaths/reference/open_duckdb_checked.md)
+  : Open a DuckDB warehouse read-only, asserting the tables the caller
+  needs
+
