@@ -1,0 +1,17 @@
+Package: researchpaths
+Title: Resolve Data Paths on Removable Volumes Without Guessing
+Version: 0.1.0
+Authors@R: person("Tyler", "Muffly", email = "tyler.muffly@dhha.org", role = c("aut", "cre"))
+Description: Removable volumes mount under whatever name the operating system
+    decides; macOS in particular remounts a drive as "Name 1" after an unclean
+    unmount. Code that hardcodes a mount path then reads nothing -- and because
+    DuckDB creates a database at a path that does not exist, the failure can be
+    an empty warehouse and a pipeline that reports success having measured
+    nothing. This package discovers volumes by glob, validates candidates before
+    opening anything, never creates or modifies a candidate during discovery,
+    and fails loudly on zero or ambiguous matches.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Suggests: DBI, duckdb, testthat (>= 3.0.0)
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2
