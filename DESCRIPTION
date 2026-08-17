@@ -10,8 +10,10 @@ Description: Removable volumes mount under whatever name the operating system
     nothing. This package discovers volumes by glob, validates candidates before
     opening anything, never creates or modifies a candidate during discovery,
     and fails loudly on zero or ambiguous matches.
+URL: https://mufflyt.github.io/researchpaths/, https://github.com/mufflyt/researchpaths
+BugReports: https://github.com/mufflyt/researchpaths/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 Suggests: DBI, duckdb, testthat (>= 3.0.0)
 Config/testthat/edition: 3
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3

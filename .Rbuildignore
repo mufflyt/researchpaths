@@ -1,0 +1,9 @@
+^\.git$
+^\.github$
+^\.gitignore$
+^\.Rbuildignore$
+^_pkgdown\.yml$
+^docs$
+^researchpaths\.Rcheck$
+^researchpaths_.*\.tar\.gz$
+^LICENSE\.md$

@@ -1,0 +1,38 @@
+url: https://mufflyt.github.io/researchpaths/
+
+template:
+  bootstrap: 5
+
+# Grouped by what a caller is trying to do, not alphabetically. The order is
+# the order you use them in: find the volume, find a file on it, then open a
+# database on it -- each layer refusing to guess where the one below it failed.
+reference:
+  - title: Volumes
+    desc: >
+      Discover a mount point by glob rather than by hardcoded name. A removable
+      volume remounts as "Name 1" after an unclean unmount, and a hardcoded path
+      then silently reads nothing.
+    contents:
+      - resolve_volume
+
+  - title: Files on a volume
+    desc: >
+      Locate a file relative to a discovered volume, validating it before any
+      caller opens it.
+    contents:
+      - resolve_file_on_volume
+
+  - title: DuckDB
+    desc: >
+      The layer that exists because DuckDB CREATES a database at a path that
+      does not exist. A typo in a warehouse path is therefore not an error but
+      an empty database, and a pipeline that reports success having measured
+      nothing. These two refuse to open a database that fails a size check.
+    contents:
+      - resolve_duckdb
+      - open_duckdb_checked
+
+navbar:
+  structure:
+    left: [reference, news]
+    right: [search, github]

@@ -3,3 +3,12 @@
 .RData
 .Ruserdata
 *.tar.gz
+
+# pkgdown output. The site is published to the gh-pages branch by
+# .github/workflows/pkgdown.yml, so a committed docs/ would be a second copy
+# that drifts from the deployed one.
+docs/
+
+# R CMD check output
+*.Rcheck/
+*.tar.gz

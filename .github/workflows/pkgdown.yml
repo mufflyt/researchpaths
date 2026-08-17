@@ -1,0 +1,91 @@
+# =============================================================================
+# pkgdown site
+# =============================================================================
+# Two behaviours in one workflow, and the difference matters:
+#
+#   pull_request / workflow_dispatch  BUILD ONLY. Proves the site still builds
+#                                     -- a broken \link{}, an example that
+#                                     errors, a reference topic not listed in
+#                                     _pkgdown.yml -- without publishing.
+#   push to main/master               BUILD AND DEPLOY to GitHub Pages.
+#
+# Deploying from a pull request would publish an unreviewed branch to the
+# package's public URL, so the deploy step is gated on the event, not merely on
+# the branch.
+#
+# The site is built with `new_process: false`. pkgdown's default spawns a
+# separate R process to render examples; when that process dies the error is
+# reported as "callr subprocess failed" with the real message swallowed, which
+# turns a one-line documentation typo into an unreadable log.
+name: pkgdown
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # A rapid second push must not race the first deploy onto Pages and publish
+  # the older commit. Newer wins; the superseded run is cancelled.
+  group: pkgdown-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pkgdown:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgdown, local::.
+          needs: website
+
+      # Rd files are generated from roxygen comments in R/. They were absent
+      # from this repository entirely at first, so the reference index would
+      # have been empty and the site would have built green with no
+      # documentation on it. Regenerating here and failing on a diff keeps the
+      # committed Rd in step with the source, rather than trusting that whoever
+      # edited a roxygen block remembered to run roxygenise().
+      - name: Documentation is up to date with the roxygen source
+        run: |
+          install.packages("roxygen2")
+          roxygen2::roxygenise(".")
+        shell: Rscript {0}
+
+      - name: Fail if Rd files are stale
+        run: |
+          if [ -n "$(git status --porcelain man/ NAMESPACE)" ]; then
+            echo "Committed documentation does not match R/ -- run roxygen2::roxygenise() and commit:"
+            git status --porcelain man/ NAMESPACE
+            git diff -- man/ NAMESPACE
+            exit 1
+          fi
+          echo "man/ and NAMESPACE are in step with R/"
+
+      - name: Build site
+        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: JamesIves/github-pages-deploy-action@v4.5.0
+        with:
+          clean: false
+          branch: gh-pages
+          folder: docs

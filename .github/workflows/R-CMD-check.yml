@@ -1,0 +1,83 @@
+# =============================================================================
+# R CMD check
+# =============================================================================
+# This package exists to stop a class of silent failure -- a removable volume
+# that remounts under a different name, and a DuckDB handle that CREATES an
+# empty database at a path that does not exist -- so its own checks have to be
+# real ones, on the platforms where the failure happens.
+#
+# THREE PLATFORMS, deliberately. The bug this package was written for is
+# macOS-specific: macOS appends " 1" to a remounted volume name. But the
+# resolver is used from Linux runners too, and the two systems disagree about
+# path case-sensitivity and about what Sys.glob() returns for a missing
+# directory. Checking only where the bug happens would let the fix break
+# everywhere else.
+#
+# NO SYSTEM DEPENDENCIES. DBI and duckdb are Suggests, and the tests that need
+# them skip when they are absent. If this workflow ever needs apt-get, the
+# package has taken on a dependency it was designed not to have.
+name: R-CMD-check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: ubuntu-latest,  r: 'release'}
+          # oldrel guards the R-version floor. The package uses only base R at
+          # runtime, so a failure here means an accidental dependency on a
+          # recent addition -- which is exactly the kind of thing that makes a
+          # utility package unusable in the older pipelines that need it most.
+          - {os: ubuntu-latest,  r: 'oldrel-1'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          args: 'c("--no-manual", "--as-cran")'
+          # WARNING, not NOTE, and the reason is measured rather than assumed.
+          # `error-on: "note"` was set here first, on the argument that a
+          # package this small has no legitimate notes. A local --as-cran run
+          # returned four. Two were real and are now fixed by .Rbuildignore
+          # (hidden files, non-standard top-level files). Two cannot be fixed
+          # from inside the package:
+          #
+          #   CRAN incoming feasibility  the "new submission" note, emitted for
+          #                              anything not already on CRAN. This
+          #                              package is not going to CRAN.
+          #   future file timestamps     clock skew against the network time
+          #                              server, a property of the machine.
+          #
+          # Shipping error-on: "note" would have made this workflow red on its
+          # first run for reasons no commit can address, and a check that is
+          # red by default is a check nobody reads.
+          error-on: '"warning"'
